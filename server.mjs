@@ -11,7 +11,7 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
 let lastResponse = null; // Guardar última respuesta para AppCreator24
 
-// Necesario para leer JSON de Telegram
+// Middleware para leer JSON
 app.use(express.json());
 
 // 📌 Health check
@@ -19,31 +19,33 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// 📌 Webhook de Telegram (cuando alguien escribe al bot)
+// 📌 Webhook de Telegram (se debe usar POST)
 app.post("/webhook", async (req, res) => {
   try {
-    const update = req.body;
+    const message = req.body.message;
 
-    if (update.message) {
-      const chatId = update.message.chat.id;
-      const text = update.message.text || "📎 (Mensaje sin texto)";
-
-      // Guardar última respuesta
-      lastResponse = {
-        chatId,
-        text,
-        timestamp: new Date().toISOString(),
-      };
-
-      // Responder automáticamente al usuario
-      await axios.post(`${TELEGRAM_API}/sendMessage`, {
-        chat_id: chatId,
-        text: `🤖 Hola! Soy *Consulta PE Bot* y recibí tu mensaje: "${text}"`,
-        parse_mode: "Markdown",
-      });
+    if (!message) {
+      return res.json({ success: false, message: "No hay mensaje en el body" });
     }
 
-    res.sendStatus(200);
+    const chatId = message.chat.id;
+    const text = message.text || "📎 (Mensaje sin texto)";
+
+    // Guardar la última respuesta
+    lastResponse = {
+      chatId,
+      text,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Respuesta automática
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: `🤖 Hola! Soy *Consulta PE Bot* y recibí tu mensaje: "${text}"`,
+      parse_mode: "Markdown",
+    });
+
+    return res.json({ success: true, message: "Mensaje procesado" });
   } catch (error) {
     console.error("Error en webhook:", error.message);
     res.status(500).json({ error: error.message });
@@ -51,7 +53,6 @@ app.post("/webhook", async (req, res) => {
 });
 
 // 📌 Endpoint para enviar mensajes manualmente
-// Ejemplo: /api/telegram/send?chatId=12345&text=Hola
 app.get("/api/telegram/send", async (req, res) => {
   const { chatId, text } = req.query;
 
@@ -72,7 +73,6 @@ app.get("/api/telegram/send", async (req, res) => {
 });
 
 // 📌 Endpoint para consultar última respuesta
-// Ejemplo: /api/last-response
 app.get("/api/last-response", (req, res) => {
   if (lastResponse) {
     res.json({ success: true, lastResponse });
