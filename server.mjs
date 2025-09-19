@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import dotenv from "dotenv";
+import cors from "cors";
 
 dotenv.config();
 
@@ -11,6 +12,9 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
 let lastResponse = null; // Guardar última respuesta para AppCreator24
 
+// ✅ Activar CORS para todas las rutas
+app.use(cors());
+
 // Middleware para leer JSON
 app.use(express.json());
 
@@ -19,7 +23,7 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// 📌 Webhook de Telegram (se debe usar POST)
+// 📌 Webhook de Telegram (se debe usar POST desde Telegram)
 app.post("/webhook", async (req, res) => {
   try {
     const message = req.body.message;
@@ -52,7 +56,7 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
-// 📌 Endpoint para enviar mensajes manualmente
+// 📌 Endpoint para enviar mensajes manualmente (usando GET para AppCreator24)
 app.get("/api/telegram/send", async (req, res) => {
   const { chatId, text } = req.query;
 
@@ -61,10 +65,12 @@ app.get("/api/telegram/send", async (req, res) => {
   }
 
   try {
+    // ⚡ Importante: aquí usamos axios.post para Telegram, pero la entrada sigue siendo GET
     const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
       text,
     });
+
     res.json({ success: true, result: response.data });
   } catch (error) {
     console.error("Error enviando mensaje:", error.message);
