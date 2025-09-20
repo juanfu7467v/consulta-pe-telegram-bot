@@ -24,16 +24,16 @@ app.get("/api/health", (req, res) => {
 // 📌 Webhook de Telegram (POST)
 app.post("/webhook", async (req, res) => {
   try {
-    const message = req.body.message;
+    const message = req.body?.message;
 
-    if (!message) {
-      return res.json({ success: false, message: "No hay mensaje en el body" });
+    if (!message || !message.chat?.id) {
+      return res.status(400).json({ success: false, message: "Mensaje inválido" });
     }
 
     const chatId = message.chat.id;
-    const text = message.text || "📎 (Mensaje sin texto)";
+    const text = message.text?.trim() || "📎 (Mensaje sin texto)";
 
-    // Guardar la última respuesta
+    // Guardar última respuesta
     lastResponse = {
       chatId,
       text,
@@ -43,33 +43,35 @@ app.post("/webhook", async (req, res) => {
     // Respuesta automática
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
-      text: `🤖 Hola! Soy *Consulta PE Bot* y recibí tu mensaje: "${text}"`,
+      text: `🤖 Hola! Soy *Consulta PE Bot* y recibí tu mensaje:\n\n"${text}"`,
       parse_mode: "Markdown",
     });
 
-    return res.json({ success: true, message: "Mensaje procesado" });
+    // Telegram espera status 200
+    return res.status(200).json({ success: true, message: "Mensaje procesado" });
   } catch (error) {
-    console.error("Error en webhook:", error.message);
+    console.error("❌ Error en webhook:", error.response?.data || error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 📌 Endpoint para enviar mensajes manualmente
+// 📌 Endpoint para enviar mensajes manualmente (GET, para AppCreator24)
 app.get("/api/telegram/send", async (req, res) => {
-  const { chatId, text } = req.query;
-
-  if (!chatId || !text) {
-    return res.json({ success: false, message: "Faltan parámetros (chatId, text)" });
-  }
-
   try {
+    const { chatId, text } = req.query;
+
+    if (!chatId || !text) {
+      return res.json({ success: false, message: "Faltan parámetros (chatId, text)" });
+    }
+
     const response = await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
-      text,
+      text: text.trim(),
     });
+
     res.json({ success: true, result: response.data });
   } catch (error) {
-    console.error("Error enviando mensaje:", error.message);
+    console.error("❌ Error enviando mensaje:", error.response?.data || error.message);
     res.status(500).json({ error: error.message });
   }
 });
