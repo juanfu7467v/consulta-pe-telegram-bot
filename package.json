@@ -1,0 +1,16 @@
+{
+  "name": "telegram-user-bot",
+  "version": "1.0.0",
+  "description": "A Telegram user bot for sending manual messages via QR code login.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "telegram": "^2.22.4",
+    "dotenv": "^16.4.5"
+  }
+}
