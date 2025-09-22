@@ -6,7 +6,7 @@ app = "your-app-name-here" # Reemplaza con un nombre de app único
 primary_region = "lim" # Puedes cambiar esto si quieres otra región, por ejemplo, "iad" (Virginia, EE.UU.)
 
 [build]
-  builder = "paketobuildpacks/nodejs-20-cnb:0.0.18"
+  builder = "paketobuildpacks/builder:base"
 
 [env]
   PORT = "8080"
