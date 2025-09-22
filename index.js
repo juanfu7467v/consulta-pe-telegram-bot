@@ -7,11 +7,13 @@ import { CustomFile } from "telegram/client/uploads.js";
 import { Api } from "telegram/index.js";
 import path from "path";
 import { fileURLToPath } from "url";
+import cors from "cors";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+app.use(cors({ origin: "*", methods: ["GET"] })); // CORS abierto solo GET
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,7 +46,7 @@ async function createAndConnectClient(sessionId) {
       }
       console.log(`QR code generated for session ${sessionId}`);
     },
-    phoneNumber: async () => "", // No usamos teléfono porque login es por QR
+    phoneNumber: async () => "",
     password: async () => "",
   });
 
@@ -64,6 +66,8 @@ async function createAndConnectClient(sessionId) {
 }
 
 // ------------------- Endpoints -------------------
+
+// Crear sesión y generar QR
 app.get("/api/session/create", async (req, res) => {
   const sessionId = req.query.sessionId || `session_${Date.now()}`;
   if (sessions.has(sessionId) && sessions.get(sessionId).status !== "disconnected") {
@@ -79,6 +83,7 @@ app.get("/api/session/create", async (req, res) => {
   res.json({ ok: true, sessionId, status: "starting" });
 });
 
+// Obtener QR de una sesión
 app.get("/api/session/qr", (req, res) => {
   const { sessionId } = req.query;
   const session = sessions.get(sessionId);
@@ -88,8 +93,9 @@ app.get("/api/session/qr", (req, res) => {
   res.json({ ok: true, status: session.status, qr: session.qr });
 });
 
-app.post("/api/message/send", async (req, res) => {
-  const { sessionId, target, message, file_url } = req.body;
+// Enviar mensaje (GET en lugar de POST)
+app.get("/api/message/send", async (req, res) => {
+  const { sessionId, target, message, file_url } = req.query;
   const session = sessions.get(sessionId);
 
   if (!session || session.status !== "connected") {
@@ -127,6 +133,7 @@ app.post("/api/message/send", async (req, res) => {
   }
 });
 
+// Resetear sesión
 app.get("/api/session/reset", async (req, res) => {
   const { sessionId } = req.query;
   const session = sessions.get(sessionId);
@@ -138,6 +145,7 @@ app.get("/api/session/reset", async (req, res) => {
   res.json({ ok: true, message: "Session reset." });
 });
 
+// Página de inicio
 app.get("/", (req, res) => {
   res.send(`
     <h1>Telegram User Bot Interface</h1>
@@ -145,7 +153,7 @@ app.get("/", (req, res) => {
     <ul>
       <li>GET /api/session/create?sessionId=your_session_id</li>
       <li>GET /api/session/qr?sessionId=your_session_id</li>
-      <li>POST /api/message/send (body: { sessionId, target, message, file_url? })</li>
+      <li>GET /api/message/send?sessionId=your_session_id&target=usuario&message=hola</li>
       <li>GET /api/session/reset?sessionId=your_session_id</li>
     </ul>
     <p>Visit /api/session/create to start a new session and get a QR code.</p>
