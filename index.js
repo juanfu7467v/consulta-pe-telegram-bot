@@ -5,7 +5,6 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { CustomFile } from "telegram/client/uploads.js";
 import { Api } from "telegram/index.js";
-import { isChannel, isUser } from "telegram/Utils.js"; // ✅ Corrección aquí
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -154,6 +153,6 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server is running on port ${PORT}`);
 });
