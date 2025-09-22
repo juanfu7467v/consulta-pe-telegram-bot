@@ -1,6 +1,8 @@
-/.git
-/node_modules
-.dockerignore
-.env
+.git
+node_modules
+npm-debug.log
 Dockerfile
+.dockerignore
 fly.toml
+.env
+*.md
