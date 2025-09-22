@@ -5,7 +5,7 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import { CustomFile } from "telegram/client/uploads.js";
 import { Api } from "telegram/index.js";
-import { isChannel, isUser } from "telegram/tl/helpers.js";
+import { isChannel, isUser } from "telegram/Utils.js"; // ✅ Corrección aquí
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -28,38 +28,38 @@ async function createAndConnectClient(sessionId) {
     connectionRetries: 5,
   });
 
-  client.start({
-    qrCode: true,
-    phoneNumber: async () => {}, // No necesitamos esto para el login con QR
-    password: async () => {},
-  });
-
-  client.addQrCodeGenerator(async (qr) => {
-    const dataUrl = await qrcode.toDataURL(qr.url);
-    sessions.get(sessionId).qr = dataUrl;
-    sessions.get(sessionId).status = "qr_generated";
-    console.log(`QR code generated for session ${sessionId}`);
-  });
-
   sessions.set(sessionId, {
     client,
-    session: new StringSession(""),
+    session,
     status: "starting",
     qr: null,
   });
 
-  client.start();
+  await client.start({
+    qrCode: async (qr) => {
+      const dataUrl = await qrcode.toDataURL(qr);
+      const sessionData = sessions.get(sessionId);
+      if (sessionData) {
+        sessionData.qr = dataUrl;
+        sessionData.status = "qr_generated";
+      }
+      console.log(`QR code generated for session ${sessionId}`);
+    },
+    phoneNumber: async () => "", // No usamos teléfono porque login es por QR
+    password: async () => "",
+  });
 
-  client.addEventHandler(
-    async (update) => {
-      if (update instanceof Api.updates.UpdateAuthorization) {
-        sessions.get(sessionId).status = "connected";
-        sessions.get(sessionId).qr = null;
-        sessions.get(sessionId).session = new StringSession(client.session.save());
+  client.addEventHandler(async (update) => {
+    if (update instanceof Api.UpdateAuthorizationState) {
+      const sessionData = sessions.get(sessionId);
+      if (sessionData) {
+        sessionData.status = "connected";
+        sessionData.qr = null;
+        sessionData.session = new StringSession(client.session.save());
         console.log(`✅ Session ${sessionId} connected successfully.`);
       }
     }
-  );
+  });
 
   return client;
 }
@@ -75,7 +75,7 @@ app.get("/api/session/create", async (req, res) => {
       qr: sessions.get(sessionId).qr,
     });
   }
-  
+
   await createAndConnectClient(sessionId);
   res.json({ ok: true, sessionId, status: "starting" });
 });
@@ -92,7 +92,7 @@ app.get("/api/session/qr", (req, res) => {
 app.post("/api/message/send", async (req, res) => {
   const { sessionId, target, message, file_url } = req.body;
   const session = sessions.get(sessionId);
-  
+
   if (!session || session.status !== "connected") {
     return res.status(400).json({ ok: false, error: "Session is not connected." });
   }
@@ -101,24 +101,17 @@ app.post("/api/message/send", async (req, res) => {
   let peer = null;
 
   try {
-    // Intenta encontrar la entidad por username, número de teléfono o ID
     peer = await client.getEntity(target);
   } catch (e) {
     console.error(`Error finding entity for target '${target}':`, e.message);
     return res.status(404).json({ ok: false, error: `Could not find a user, channel, or group for '${target}'.` });
   }
 
-  const sendMessageOptions = {
-    message: message,
-  };
+  const sendMessageOptions = { message };
 
   if (file_url) {
     try {
       const filePath = path.join(__dirname, "temp_files", path.basename(file_url));
-      // En un entorno de producción, descargarías el archivo desde la URL a una carpeta temporal.
-      // Para este ejemplo, asumimos que el archivo ya existe en el disco para fines de demostración.
-      // Aquí, solo simulamos el path.
-      
       sendMessageOptions.file = new CustomFile(path.basename(file_url), null, path.dirname(filePath), filePath);
     } catch (e) {
       console.error("Error creating CustomFile:", e.message);
@@ -138,9 +131,9 @@ app.post("/api/message/send", async (req, res) => {
 app.get("/api/session/reset", async (req, res) => {
   const { sessionId } = req.query;
   const session = sessions.get(sessionId);
-  
+
   if (session) {
-    session.client.disconnect();
+    await session.client.disconnect();
     sessions.delete(sessionId);
   }
   res.json({ ok: true, message: "Session reset." });
@@ -162,5 +155,5 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`🚀 Server is running on port ${PORT}`);
 });
