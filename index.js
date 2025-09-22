@@ -13,7 +13,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "*", methods: ["GET"] })); // CORS abierto solo GET
+app.use(cors({ origin: "*", methods: ["GET"] })); // habilitar CORS GET para AppCreator24
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,7 +22,7 @@ const apiId = parseInt(process.env.API_ID);
 const apiHash = process.env.API_HASH;
 const sessions = new Map();
 
-// Función para inicializar y conectar el cliente de Telegram
+// ------------------- Función para crear sesión -------------------
 async function createAndConnectClient(sessionId) {
   const session = sessions.get(sessionId)?.session || new StringSession("");
   const client = new TelegramClient(session, apiId, apiHash, {
@@ -37,6 +37,7 @@ async function createAndConnectClient(sessionId) {
   });
 
   await client.start({
+    // 🔑 Aquí guardamos el QR directamente
     qrCode: async (qr) => {
       const dataUrl = await qrcode.toDataURL(qr);
       const sessionData = sessions.get(sessionId);
@@ -44,18 +45,19 @@ async function createAndConnectClient(sessionId) {
         sessionData.qr = dataUrl;
         sessionData.status = "qr_generated";
       }
-      console.log(`QR code generated for session ${sessionId}`);
+      console.log(`📲 QR code generated for session ${sessionId}`);
     },
-    phoneNumber: async () => "",
+    phoneNumber: async () => "", // no pedimos número, usamos QR
     password: async () => "",
   });
 
+  // Cuando la sesión esté conectada
   client.addEventHandler(async (update) => {
     if (update instanceof Api.UpdateAuthorizationState) {
       const sessionData = sessions.get(sessionId);
       if (sessionData) {
         sessionData.status = "connected";
-        sessionData.qr = null;
+        sessionData.qr = null; // QR ya no es necesario
         sessionData.session = new StringSession(client.session.save());
         console.log(`✅ Session ${sessionId} connected successfully.`);
       }
@@ -83,7 +85,7 @@ app.get("/api/session/create", async (req, res) => {
   res.json({ ok: true, sessionId, status: "starting" });
 });
 
-// Obtener QR de una sesión
+// Obtener QR
 app.get("/api/session/qr", (req, res) => {
   const { sessionId } = req.query;
   const session = sessions.get(sessionId);
@@ -93,7 +95,7 @@ app.get("/api/session/qr", (req, res) => {
   res.json({ ok: true, status: session.status, qr: session.qr });
 });
 
-// Enviar mensaje (GET en lugar de POST)
+// Enviar mensaje (GET con query params para AppCreator24)
 app.get("/api/message/send", async (req, res) => {
   const { sessionId, target, message, file_url } = req.query;
   const session = sessions.get(sessionId);
@@ -109,7 +111,10 @@ app.get("/api/message/send", async (req, res) => {
     peer = await client.getEntity(target);
   } catch (e) {
     console.error(`Error finding entity for target '${target}':`, e.message);
-    return res.status(404).json({ ok: false, error: `Could not find a user, channel, or group for '${target}'.` });
+    return res.status(404).json({
+      ok: false,
+      error: `Could not find a user, channel, or group for '${target}'.`,
+    });
   }
 
   const sendMessageOptions = { message };
@@ -117,7 +122,12 @@ app.get("/api/message/send", async (req, res) => {
   if (file_url) {
     try {
       const filePath = path.join(__dirname, "temp_files", path.basename(file_url));
-      sendMessageOptions.file = new CustomFile(path.basename(file_url), null, path.dirname(filePath), filePath);
+      sendMessageOptions.file = new CustomFile(
+        path.basename(file_url),
+        null,
+        path.dirname(filePath),
+        filePath
+      );
     } catch (e) {
       console.error("Error creating CustomFile:", e.message);
       return res.status(500).json({ ok: false, error: "Error processing the file URL." });
