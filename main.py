@@ -6,7 +6,7 @@ from telethon import TelegramClient, events
 import asyncio
 
 # --- Configuración Telegram ---
-API_ID = int(os.getenv("API_ID", "YOUR_API_ID"))   # Consigue esto en https://my.telegram.org
+API_ID = int(os.getenv("API_ID", "YOUR_API_ID"))   # pon tus credenciales en fly secrets
 API_HASH = os.getenv("API_HASH", "YOUR_API_HASH")
 SESSION = "consulta_pe_session"
 
@@ -19,6 +19,7 @@ client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
 # Para almacenar mensajes recibidos
 messages = []
+qr_login = None  # variable global para mantener el login QR activo
 
 @app.route("/")
 def index():
@@ -34,12 +35,17 @@ def index():
 # Endpoint para obtener el QR
 @app.route("/qr")
 async def get_qr():
-    qr_login = await client.qr_login()
-    qr = qrcode.make(qr_login.url)
-    buf = BytesIO()
-    qr.save(buf, "PNG")
-    buf.seek(0)
-    return send_file(buf, mimetype="image/png")
+    global qr_login
+    await client.connect()
+    if not await client.is_user_authorized():
+        qr_login = await client.qr_login()
+        qr = qrcode.make(qr_login.url)
+        buf = BytesIO()
+        qr.save(buf, "PNG")
+        buf.seek(0)
+        return send_file(buf, mimetype="image/png")
+    else:
+        return jsonify({"status": "ya vinculado"})
 
 # Endpoint para enviar mensajes
 @app.route("/send")
@@ -71,8 +77,8 @@ async def handler(event):
 # Arrancar Flask y Telethon juntos
 def main():
     async def run():
-        await client.start()
-        print("✅ Cliente Telegram conectado.")
+        await client.connect()  # conectar sin pedir input
+        print("✅ Cliente Telegram conectado (esperando QR si no autorizado).")
         app.run(host="0.0.0.0", port=3000)
 
     loop.run_until_complete(run())
