@@ -1,21 +1,17 @@
 {
   "name": "telegram-user-bot",
   "version": "1.0.0",
-  "description": "Un mini Telegram Web con endpoints GET para crear sesiones, enviar y recibir mensajes.",
+  "description": "A Telegram user bot with QR login and REST endpoints.",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "qrcode": "^1.5.3",
-    "telegram": "^2.22.4"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.0"
+    "telegram": "^2.26.21"
   }
 }
