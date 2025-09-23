@@ -13,7 +13,7 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "*", methods: ["GET"] })); // habilitar CORS GET para AppCreator24
+app.use(cors({ origin: "*", methods: ["GET"] })); // habilitar CORS para AppCreator24
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,7 +37,6 @@ async function createAndConnectClient(sessionId) {
   });
 
   await client.start({
-    // 🔑 Aquí guardamos el QR directamente
     qrCode: async (qr) => {
       const dataUrl = await qrcode.toDataURL(qr);
       const sessionData = sessions.get(sessionId);
@@ -47,17 +46,22 @@ async function createAndConnectClient(sessionId) {
       }
       console.log(`📲 QR code generated for session ${sessionId}`);
     },
-    phoneNumber: async () => "", // no pedimos número, usamos QR
-    password: async () => "",
+    phoneNumber: async () => {
+      console.log("⚠️ Se intentó pedir número de teléfono.");
+      return "";
+    },
+    password: async () => {
+      console.log("⚠️ Se intentó pedir contraseña de 2FA.");
+      return "";
+    },
   });
 
-  // Cuando la sesión esté conectada
   client.addEventHandler(async (update) => {
     if (update instanceof Api.UpdateAuthorizationState) {
       const sessionData = sessions.get(sessionId);
       if (sessionData) {
         sessionData.status = "connected";
-        sessionData.qr = null; // QR ya no es necesario
+        sessionData.qr = null;
         sessionData.session = new StringSession(client.session.save());
         console.log(`✅ Session ${sessionId} connected successfully.`);
       }
@@ -69,7 +73,7 @@ async function createAndConnectClient(sessionId) {
 
 // ------------------- Endpoints -------------------
 
-// Crear sesión y generar QR
+// Crear sesión
 app.get("/api/session/create", async (req, res) => {
   const sessionId = req.query.sessionId || `session_${Date.now()}`;
   if (sessions.has(sessionId) && sessions.get(sessionId).status !== "disconnected") {
@@ -95,7 +99,7 @@ app.get("/api/session/qr", (req, res) => {
   res.json({ ok: true, status: session.status, qr: session.qr });
 });
 
-// Enviar mensaje (GET con query params para AppCreator24)
+// Enviar mensaje (GET con parámetros para AppCreator24)
 app.get("/api/message/send", async (req, res) => {
   const { sessionId, target, message, file_url } = req.query;
   const session = sessions.get(sessionId);
@@ -105,40 +109,31 @@ app.get("/api/message/send", async (req, res) => {
   }
 
   const client = session.client;
-  let peer = null;
 
   try {
-    peer = await client.getEntity(target);
-  } catch (e) {
-    console.error(`Error finding entity for target '${target}':`, e.message);
-    return res.status(404).json({
-      ok: false,
-      error: `Could not find a user, channel, or group for '${target}'.`,
-    });
-  }
+    const peer = await client.getEntity(target);
 
-  const sendMessageOptions = { message };
+    const sendMessageOptions = { message };
 
-  if (file_url) {
-    try {
-      const filePath = path.join(__dirname, "temp_files", path.basename(file_url));
-      sendMessageOptions.file = new CustomFile(
-        path.basename(file_url),
-        null,
-        path.dirname(filePath),
-        filePath
-      );
-    } catch (e) {
-      console.error("Error creating CustomFile:", e.message);
-      return res.status(500).json({ ok: false, error: "Error processing the file URL." });
+    if (file_url) {
+      try {
+        const filePath = path.join(__dirname, "temp_files", path.basename(file_url));
+        sendMessageOptions.file = new CustomFile(
+          path.basename(file_url),
+          null,
+          path.dirname(filePath),
+          filePath
+        );
+      } catch (e) {
+        console.error("❌ Error creating CustomFile:", e.message);
+        return res.status(500).json({ ok: false, error: "Error processing the file URL." });
+      }
     }
-  }
 
-  try {
     await client.sendMessage(peer, sendMessageOptions);
     res.json({ ok: true, message: "Message sent successfully." });
   } catch (e) {
-    console.error("Error sending message:", e.message);
+    console.error("❌ Error sending message:", e.message);
     res.status(500).json({ ok: false, error: `Failed to send message: ${e.message}` });
   }
 });
@@ -166,7 +161,7 @@ app.get("/", (req, res) => {
       <li>GET /api/message/send?sessionId=your_session_id&target=usuario&message=hola</li>
       <li>GET /api/session/reset?sessionId=your_session_id</li>
     </ul>
-    <p>Visit /api/session/create to start a new session and get a QR code.</p>
+    <p>Visit <a href="/api/session/create" target="_blank">/api/session/create</a> to start a new session and generate a QR code.</p>
   `);
 });
 
