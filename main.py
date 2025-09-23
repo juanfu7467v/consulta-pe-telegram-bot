@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from telethon import TelegramClient, events
 import asyncio
 import threading
@@ -10,6 +10,10 @@ API_HASH = os.getenv("API_HASH", "YOUR_API_HASH")
 SESSION = "consulta_pe_session"
 
 app = Flask(__name__)
+
+# Carpeta de descargas
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Loop de asyncio en segundo plano
 loop = asyncio.new_event_loop()
@@ -110,6 +114,11 @@ def get_msgs():
     else:
         return jsonify({"message": "no data", "result": {"quantity": 0, "coincidences": []}})
 
+# Servir archivos descargados
+@app.route("/files/<path:filename>")
+def serve_file(filename):
+    return send_from_directory(DOWNLOAD_DIR, filename)
+
 # --- Manejo de mensajes entrantes ---
 @client.on(events.NewMessage)
 async def handler(event):
@@ -122,12 +131,7 @@ async def handler(event):
     # Si tiene media (fotos, documentos, etc.)
     if event.message.media:
         try:
-            # Guardamos archivo en disco (puedes cambiar a S3/otro host)
-            path = f"downloads/{event.message.id}"
-            os.makedirs("downloads", exist_ok=True)
-            file_path = await event.download_media(file=path)
-
-            # Construimos URL accesible (aquí podrías montar un server estático)
+            file_path = await event.download_media(file=DOWNLOAD_DIR)
             msg_data["url"] = f"/files/{os.path.basename(file_path)}"
         except Exception as e:
             msg_data["error"] = str(e)
