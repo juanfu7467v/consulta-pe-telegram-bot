@@ -43,36 +43,45 @@ app.get("/api/session/create", async (req, res) => {
     inbox: [],
   });
 
-  await client.start({
-    qrCode: async (qr) => {
-      const qrData = await qrcode.toDataURL(qr);
-      const data = sessions.get(sessionId);
-      if (data) {
-        data.qr = qrData;
-        data.status = "qr_generated";
-        console.log(`📲 QR listo para ${sessionId}`);
+  try {
+    await client.start({
+      qrCode: async (qr) => {
+        const qrData = await qrcode.toDataURL(qr);
+        const data = sessions.get(sessionId);
+        if (data) {
+          data.qr = qrData;
+          data.status = "qr_generated";
+          console.log(`📲 QR listo para ${sessionId}`);
+        }
+      },
+      phoneNumber: async () => "",
+      password: async () => "",
+      onError: async (err) => {
+        console.error("❌ Error en login:", err.message);
+        return true; // no detiene el flujo
+      },
+    });
+
+    // Manejo de mensajes entrantes
+    client.addEventHandler((update) => {
+      if (update.message && update.message.message) {
+        const msg = {
+          from: update.message.senderId?.toString(),
+          text: update.message.message,
+          date: new Date().toISOString(),
+        };
+        const data = sessions.get(sessionId);
+        if (data) data.inbox.push(msg);
+        console.log("📥 Nuevo mensaje recibido:", msg);
       }
-    },
-    phoneNumber: async () => "",
-    password: async () => "",
-  });
+    });
 
-  // Manejo de mensajes entrantes
-  client.addEventHandler((update) => {
-    if (update.message && update.message.message) {
-      const msg = {
-        from: update.message.senderId?.toString(),
-        text: update.message.message,
-        date: new Date().toISOString(),
-      };
-      const data = sessions.get(sessionId);
-      if (data) data.inbox.push(msg);
-      console.log("📥 Nuevo mensaje recibido:", msg);
-    }
-  });
-
-  sessions.get(sessionId).status = "connected";
-  res.json({ ok: true, sessionId, status: "starting" });
+    sessions.get(sessionId).status = "connected";
+    res.json({ ok: true, sessionId, status: "connected" });
+  } catch (e) {
+    console.error("❌ Error creando sesión:", e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ------------------- Obtener QR -------------------
