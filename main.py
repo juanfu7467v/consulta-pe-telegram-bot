@@ -99,14 +99,40 @@ def send_msg():
 
 @app.route("/get")
 def get_msgs():
-    return jsonify(messages)
+    if messages:
+        return jsonify({
+            "message": "found data",
+            "result": {
+                "quantity": len(messages),
+                "coincidences": messages
+            }
+        })
+    else:
+        return jsonify({"message": "no data", "result": {"quantity": 0, "coincidences": []}})
 
+# --- Manejo de mensajes entrantes ---
 @client.on(events.NewMessage)
 async def handler(event):
-    messages.append({
-        "from_id": event.sender_id,
-        "text": event.raw_text
-    })
+    msg_data = {"from_id": event.sender_id}
+
+    # Si es texto
+    if event.raw_text:
+        msg_data["message"] = event.raw_text
+
+    # Si tiene media (fotos, documentos, etc.)
+    if event.message.media:
+        try:
+            # Guardamos archivo en disco (puedes cambiar a S3/otro host)
+            path = f"downloads/{event.message.id}"
+            os.makedirs("downloads", exist_ok=True)
+            file_path = await event.download_media(file=path)
+
+            # Construimos URL accesible (aquí podrías montar un server estático)
+            msg_data["url"] = f"/files/{os.path.basename(file_path)}"
+        except Exception as e:
+            msg_data["error"] = str(e)
+
+    messages.append(msg_data)
 
 # --- Iniciar ---
 def main():
