@@ -1,8 +1,5 @@
-.git
-node_modules
-npm-debug.log
-Dockerfile
-.dockerignore
-fly.toml
+__pycache__/
+*.pyc
 .env
-*.md
+Dockerfile
+fly.toml
