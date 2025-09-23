@@ -1,4 +1,3 @@
-flask
-telethon
-qrcode
-pillow
+Flask>=2.0
+telethon>=1.35.0
+python-dotenv>=1.0.0
