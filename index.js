@@ -43,28 +43,27 @@ app.get("/api/session/create", async (req, res) => {
     inbox: [],
   });
 
-  // Disparamos el login pero NO respondemos hasta que el QR se genere
-  client.start({
-    qrCode: async (qr) => {
-      const qrData = await qrcode.toDataURL(qr);
+  // Arrancamos sin marcar como "connected"
+  client
+    .start({
+      qrCode: async (qr) => {
+        const qrData = await qrcode.toDataURL(qr);
+        const data = sessions.get(sessionId);
+        if (data) {
+          data.qr = qrData;
+          data.status = "qr_generated";
+          console.log(`📲 QR listo para ${sessionId}`);
+        }
+      },
+      phoneNumber: async () => "",
+      password: async () => "",
+    })
+    .then(() => {
       const data = sessions.get(sessionId);
       if (data) {
-        data.qr = qrData;
-        data.status = "qr_generated";
-        console.log(`📲 QR listo para ${sessionId}`);
+        data.status = "connected";
+        console.log(`✅ Sesión ${sessionId} conectada`);
       }
-    },
-    phoneNumber: async () => "",
-    password: async () => "",
-    onError: async (err) => {
-      console.error("❌ Error en login:", err.message);
-      return true;
-    },
-  }).then(() => {
-    const data = sessions.get(sessionId);
-    if (data) {
-      data.status = "connected";
-      console.log(`✅ Sesión conectada: ${sessionId}`);
 
       // Manejo de mensajes entrantes
       client.addEventHandler((update) => {
@@ -74,16 +73,19 @@ app.get("/api/session/create", async (req, res) => {
             text: update.message.message,
             date: new Date().toISOString(),
           };
-          data.inbox.push(msg);
+          const d = sessions.get(sessionId);
+          if (d) d.inbox.push(msg);
           console.log("📥 Nuevo mensaje recibido:", msg);
         }
       });
-    }
-  }).catch((e) => {
-    console.error("❌ Error creando sesión:", e);
-  });
+    })
+    .catch((err) => {
+      console.error("❌ Error en login:", err);
+      const data = sessions.get(sessionId);
+      if (data) data.status = "error";
+    });
 
-  res.json({ ok: true, sessionId, status: "waiting_qr" });
+  res.json({ ok: true, sessionId, status: "starting" });
 });
 
 // ------------------- Obtener QR -------------------
@@ -92,7 +94,10 @@ app.get("/api/session/qr", (req, res) => {
   const session = sessions.get(sessionId);
 
   if (!session) return res.status(404).json({ ok: false, error: "No existe la sesión" });
-  if (!session.qr) return res.json({ ok: false, message: "⚠️ Aún no se ha generado el QR. Espera unos segundos." });
+
+  if (!session.qr) {
+    return res.json({ ok: false, status: session.status, message: "⚠️ Aún no se ha generado el QR. Intenta de nuevo en unos segundos." });
+  }
 
   res.json({ ok: true, status: session.status, qr: session.qr });
 });
