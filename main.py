@@ -1,78 +1,71 @@
-# server.py
 import os
 import asyncio
 import threading
 from collections import deque
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from telethon import TelegramClient, events
 import traceback
 
 # --- Config ---
-API_ID = int(os.getenv("API_ID", "0"))          # <-- setear en Fly secrets
-API_HASH = os.getenv("API_HASH", "")            # <-- setear en Fly secrets
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:3000").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")
 PORT = int(os.getenv("PORT", 3000))
 
-# Carpeta donde se guardan los archivos descargados
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Flask
 app = Flask(__name__)
+CORS(app)  # 🚨 Habilitamos CORS para evitar Failed to fetch
 
 # Telethon
 loop = asyncio.new_event_loop()
 client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
-# Mensajes en memoria (thread-safe)
-messages = deque(maxlen=2000)  # guarda los mensajes más recientes
+# Cola de mensajes
+messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
 
-# Estado de login pendiente (phone flow)
 pending_phone = {"phone": None, "sent_at": None}
 
-# --- Background loop starter ---
+# --- Background loop ---
 def _loop_thread():
     asyncio.set_event_loop(loop)
     loop.run_forever()
 
 threading.Thread(target=_loop_thread, daemon=True).start()
 
-# --- Helper para ejecutar coroutines en el loop de telethon ---
+# --- Helper para correr coroutines ---
 def run_coro(coro):
-    """Ejecuta coroutine en el loop de telethon y espera el resultado."""
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result()
 
-# --- Start client (no bloqueante) ---
+# --- Start client ---
 async def _start_client_connect():
     try:
         await client.connect()
-        print("🔌 Telethon: conectado (connect). Autorization?", await client.is_user_authorized())
+        print("🔌 Telethon conectado. Autorizado?", await client.is_user_authorized())
     except Exception:
         print("⚠️ Error conectando Telethon:")
         traceback.print_exc()
 
-# lanzamos la conexión inicial (no bloqueante)
 asyncio.run_coroutine_threadsafe(_start_client_connect(), loop)
 
-# --- Event handler (añadido con add_event_handler) ---
+# --- Handler de mensajes ---
 async def _on_new_message(event):
     try:
         msg_obj = {
-            "id": None,
-            "chat_id": getattr(event, "chat_id", None) or getattr(event.message, "peer_id", None),
+            "chat_id": getattr(event, "chat_id", None),
             "from_id": event.sender_id,
-            "date": event.message.date.isoformat() if getattr(event, "message", None) and getattr(event.message, "date", None) else datetime.utcnow().isoformat(),
+            "date": event.message.date.isoformat() if getattr(event, "message", None) else datetime.utcnow().isoformat(),
+            "message": event.raw_text or ""
         }
 
-        # texto
-        if getattr(event, "raw_text", None):
-            msg_obj["message"] = event.raw_text
-
-        # media
+        # Archivos / Media
         if getattr(event, "message", None) and getattr(event.message, "media", None):
             try:
                 saved_path = await event.download_media(file=DOWNLOAD_DIR)
@@ -81,30 +74,28 @@ async def _on_new_message(event):
             except Exception as e:
                 msg_obj["media_error"] = str(e)
 
-        # Guardar en cola (thread-safe)
         with _messages_lock:
             messages.appendleft(msg_obj)
-        print("📥 Nuevo mensaje registrado:", msg_obj)
+
+        print("📥 Nuevo mensaje:", msg_obj)
     except Exception:
         print("❌ Error en handler de mensaje:")
         traceback.print_exc()
 
-# registrar handler (entrantes)
 client.add_event_handler(_on_new_message, events.NewMessage(incoming=True))
 
-# ------------------- Rutas HTTP -------------------
+# ------------------- Rutas -------------------
 
 @app.route("/")
 def root():
     return jsonify({
         "status": "ok",
-        "public_url": PUBLIC_URL,
         "endpoints": {
-            "/login?phone=+51...": "Solicita código SMS para iniciar sesión",
+            "/login?phone=+51...": "Solicita código SMS",
             "/code?code=12345": "Confirma código recibido",
             "/send?chat_id=@user&msg=hola": "Enviar mensaje",
-            "/get": "Obtener mensajes recibidos (polling)",
-            "/files/<filename>": "Descarga archivos recibidos"
+            "/get": "Obtener mensajes",
+            "/files/<filename>": "Descargar archivos"
         }
     })
 
@@ -129,7 +120,6 @@ def login():
         await client.connect()
         if await client.is_user_authorized():
             return {"status": "already_authorized"}
-        # solicita código SMS/telegram
         try:
             await client.send_code_request(phone)
             pending_phone["phone"] = phone
@@ -138,8 +128,7 @@ def login():
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    result = run_coro(_send_code())
-    return jsonify(result)
+    return jsonify(run_coro(_send_code()))
 
 @app.route("/code")
 def code():
@@ -153,17 +142,14 @@ def code():
 
     async def _sign_in():
         try:
-            # Telethon: sign_in with phone and code
             await client.sign_in(phone, code)
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
             return {"status": "authenticated"}
         except Exception as e:
-            # si falla (2FA) puede requerir password, etc.
             return {"status": "error", "error": str(e)}
 
-    result = run_coro(_sign_in())
-    return jsonify(result)
+    return jsonify(run_coro(_sign_in()))
 
 @app.route("/send")
 def send_msg():
@@ -173,21 +159,18 @@ def send_msg():
         return jsonify({"error": "Faltan parámetros chat_id o msg"}), 400
 
     async def _send():
-        # si es id numérico, convertir; si es @username, dejar string
         target = int(chat_id) if chat_id.isdigit() else chat_id
         entity = await client.get_entity(target)
         await client.send_message(entity, msg)
         return {"status": "sent", "to": chat_id, "msg": msg}
 
     try:
-        result = run_coro(_send())
-        return jsonify(result)
+        return jsonify(run_coro(_send()))
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route("/get")
 def get_msgs():
-    """Devuelve lista de mensajes (más recientes primero)."""
     with _messages_lock:
         data = list(messages)
     return jsonify({
@@ -200,17 +183,14 @@ def get_msgs():
 
 @app.route("/files/<path:filename>")
 def files(filename):
-    # Sirve archivos descargados
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=False)
 
 # ------------------- Run -------------------
 if __name__ == "__main__":
-    # Aseguramos que el cliente intente conectar al arrancar
     try:
         run_coro(client.connect())
     except Exception:
         pass
 
-    # Lanza Flask (main thread)
-    print(f"🚀 App arrancando en 0.0.0.0:{PORT}  (PUBLIC_URL={PUBLIC_URL})")
+    print(f"🚀 Servidor corriendo en 0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
