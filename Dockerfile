@@ -11,8 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código
 COPY . .
 
-# Exponer puerto
-EXPOSE 3000
+# Exponer puerto (Railway ignora este EXPOSE, pero sirve localmente)
+EXPOSE 8080
 
-# Comando
-CMD ["python", "main.py"]
+# Comando de inicio
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "main:app"]
