@@ -13,7 +13,7 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")
-PORT = int(os.getenv("PORT", "8080"))  # Railway asigna el puerto dinámico
+PORT = int(os.getenv("PORT", "8080"))  # Railway asigna dinámico
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
@@ -27,14 +27,14 @@ CORS(app)
 loop = asyncio.new_event_loop()
 client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
-# Mensajes en memoria
+# Cola de mensajes en memoria
 messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
 
 # Estado de login pendiente
 pending_phone = {"phone": None, "sent_at": None}
 
-# --- Background loop ---
+# --- Hilo de loop asyncio ---
 def _loop_thread():
     asyncio.set_event_loop(loop)
     loop.run_forever()
@@ -45,7 +45,7 @@ def run_coro(coro):
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result()
 
-# --- Event handler ---
+# --- Handler de mensajes ---
 async def _on_new_message(event):
     try:
         msg_obj = {
@@ -180,12 +180,16 @@ def get_msgs():
 def files(filename):
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=False)
 
-# ------------------- Run -------------------
-if __name__ == "__main__":
+# ------------------- Inicialización segura -------------------
+@app.before_first_request
+def startup():
+    """Se ejecuta antes del primer request en Gunicorn"""
     try:
         run_coro(client.connect())
-    except Exception:
-        pass
+        print("✅ Telethon conectado correctamente")
+    except Exception as e:
+        print("❌ Error iniciando Telethon:", e)
 
+if __name__ == "__main__":
     print(f"🚀 App corriendo en http://0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
-    app.run(host="0.0.0.0", port=PORT, threaded=True)
+    app.run(host="0.0.0.0", port=PORT)
