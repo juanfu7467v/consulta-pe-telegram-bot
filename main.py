@@ -180,16 +180,18 @@ def get_msgs():
 def files(filename):
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=False)
 
-# ------------------- Inicialización segura -------------------
-@app.before_first_request
+# ------------------- Startup en Gunicorn -------------------
 def startup():
-    """Se ejecuta antes del primer request en Gunicorn"""
+    """Arranca Telethon apenas carga el módulo"""
     try:
         run_coro(client.connect())
         print("✅ Telethon conectado correctamente")
     except Exception as e:
         print("❌ Error iniciando Telethon:", e)
 
+startup()  # se llama inmediatamente al importar
+
+# ------------------- Run local -------------------
 if __name__ == "__main__":
     print(f"🚀 App corriendo en http://0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
     app.run(host="0.0.0.0", port=PORT)
