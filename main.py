@@ -180,8 +180,7 @@ def files(filename):
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=False)
 
 # --- Startup ---
-@app.before_first_request
-def startup():
+def init_telethon():
     try:
         run_coro(client.connect())
         print("✅ Telethon conectado correctamente")
@@ -189,4 +188,5 @@ def startup():
         print("❌ Error iniciando Telethon:", e)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    init_telethon()
+    app.run(host="0.0.0.0", port=PORT)
