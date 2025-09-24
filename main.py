@@ -13,7 +13,6 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")
-PORT = int(os.getenv("PORT", "8080"))
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
@@ -171,3 +170,5 @@ def init_telethon():
         print("❌ Error iniciando Telethon:", e)
 
 init_telethon()
+
+# Importante: NO usar app.run() porque Gunicorn se encarga de levantar el servidor
