@@ -12,7 +12,7 @@ import traceback
 # --- Config ---
 API_ID = int(os.getenv("API_ID", "0"))          # setear en secrets
 API_HASH = os.getenv("API_HASH", "")            # setear en secrets
-PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:3000").rstrip("/")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")  # nombre del archivo .session
 PORT = int(os.getenv("PORT", 3000))
 
