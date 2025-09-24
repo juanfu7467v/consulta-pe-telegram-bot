@@ -1,3 +1,4 @@
+# main.py
 import os
 import asyncio
 import threading
@@ -9,63 +10,65 @@ from telethon import TelegramClient, events
 import traceback
 
 # --- Config ---
-API_ID = int(os.getenv("API_ID", "0"))
-API_HASH = os.getenv("API_HASH", "")
+API_ID = int(os.getenv("API_ID", "0"))          # setear en secrets
+API_HASH = os.getenv("API_HASH", "")            # setear en secrets
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:3000").rstrip("/")
-SESSION = os.getenv("SESSION", "consulta_pe_session")
+SESSION = os.getenv("SESSION", "consulta_pe_session")  # nombre del archivo .session
 PORT = int(os.getenv("PORT", 3000))
 
+# Carpeta donde se guardan los archivos descargados
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Flask
 app = Flask(__name__)
-CORS(app)  # 🚨 Habilitamos CORS para evitar Failed to fetch
+CORS(app)  # 🚀 habilitamos CORS para todo
 
 # Telethon
 loop = asyncio.new_event_loop()
 client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
-# Cola de mensajes
+# Mensajes en memoria (thread-safe)
 messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
 
+# Estado de login pendiente
 pending_phone = {"phone": None, "sent_at": None}
 
-# --- Background loop ---
+# --- Background loop starter ---
 def _loop_thread():
     asyncio.set_event_loop(loop)
     loop.run_forever()
 
 threading.Thread(target=_loop_thread, daemon=True).start()
 
-# --- Helper para correr coroutines ---
+# --- Helper para ejecutar coroutines ---
 def run_coro(coro):
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result()
 
-# --- Start client ---
+# --- Conectar cliente ---
 async def _start_client_connect():
     try:
         await client.connect()
         print("🔌 Telethon conectado. Autorizado?", await client.is_user_authorized())
     except Exception:
-        print("⚠️ Error conectando Telethon:")
         traceback.print_exc()
 
 asyncio.run_coroutine_threadsafe(_start_client_connect(), loop)
 
-# --- Handler de mensajes ---
+# --- Event handler ---
 async def _on_new_message(event):
     try:
         msg_obj = {
             "chat_id": getattr(event, "chat_id", None),
             "from_id": event.sender_id,
             "date": event.message.date.isoformat() if getattr(event, "message", None) else datetime.utcnow().isoformat(),
-            "message": event.raw_text or ""
         }
 
-        # Archivos / Media
+        if getattr(event, "raw_text", None):
+            msg_obj["message"] = event.raw_text
+
         if getattr(event, "message", None) and getattr(event.message, "media", None):
             try:
                 saved_path = await event.download_media(file=DOWNLOAD_DIR)
@@ -79,20 +82,20 @@ async def _on_new_message(event):
 
         print("📥 Nuevo mensaje:", msg_obj)
     except Exception:
-        print("❌ Error en handler de mensaje:")
         traceback.print_exc()
 
 client.add_event_handler(_on_new_message, events.NewMessage(incoming=True))
 
-# ------------------- Rutas -------------------
+# ------------------- Rutas HTTP -------------------
 
 @app.route("/")
 def root():
     return jsonify({
         "status": "ok",
+        "public_url": PUBLIC_URL,
         "endpoints": {
-            "/login?phone=+51...": "Solicita código SMS",
-            "/code?code=12345": "Confirma código recibido",
+            "/login?phone=+51...": "Solicita código",
+            "/code?code=12345": "Confirma código",
             "/send?chat_id=@user&msg=hola": "Enviar mensaje",
             "/get": "Obtener mensajes",
             "/files/<filename>": "Descargar archivos"
@@ -128,7 +131,8 @@ def login():
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    return jsonify(run_coro(_send_code()))
+    result = run_coro(_send_code())
+    return jsonify(result)
 
 @app.route("/code")
 def code():
@@ -143,13 +147,15 @@ def code():
     async def _sign_in():
         try:
             await client.sign_in(phone, code)
+            await client.start()  # 🚀 asegura que la sesión quede persistente
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
             return {"status": "authenticated"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    return jsonify(run_coro(_sign_in()))
+    result = run_coro(_sign_in())
+    return jsonify(result)
 
 @app.route("/send")
 def send_msg():
@@ -165,7 +171,8 @@ def send_msg():
         return {"status": "sent", "to": chat_id, "msg": msg}
 
     try:
-        return jsonify(run_coro(_send()))
+        result = run_coro(_send())
+        return jsonify(result)
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
@@ -192,5 +199,5 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    print(f"🚀 Servidor corriendo en 0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
+    print(f"🚀 App corriendo en http://0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
