@@ -13,7 +13,7 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")
-PORT = int(os.getenv("PORT", "3000"))  # ✅ Railway usa su propio PORT
+PORT = int(os.getenv("PORT", "8080"))  # Railway asigna el puerto dinámico
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
