@@ -17,8 +17,8 @@ COPY . .
 # Crea carpeta para descargas (por seguridad)
 RUN mkdir -p downloads
 
-# Puerto expuesto (Railway asigna $PORT automáticamente)
-EXPOSE 8080
+# Puerto (Railway usará su propia variable $PORT)
+EXPOSE 8000
 
-# Comando de inicio con Gunicorn
-CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8"]
+# Comando de inicio con Gunicorn, usando $PORT de Railway
+CMD gunicorn main:app --bind 0.0.0.0:$PORT --workers 1 --threads 8
