@@ -1,4 +1,3 @@
-# main.py
 import os
 import asyncio
 import threading
@@ -10,52 +9,41 @@ from telethon import TelegramClient, events
 import traceback
 
 # --- Config ---
-API_ID = int(os.getenv("API_ID", "0"))          # setear en secrets
-API_HASH = os.getenv("API_HASH", "")            # setear en secrets
-PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
-SESSION = os.getenv("SESSION", "consulta_pe_session")  # nombre del archivo .session
-PORT = int(os.getenv("PORT", 3000))
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
+SESSION = os.getenv("SESSION", "consulta_pe_session")
+PORT = int(os.getenv("PORT", "3000"))  # ✅ Railway usa su propio PORT
 
-# Carpeta donde se guardan los archivos descargados
+# Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 # Flask
 app = Flask(__name__)
-CORS(app)  # 🚀 habilitamos CORS para todo
+CORS(app)
 
 # Telethon
 loop = asyncio.new_event_loop()
 client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
-# Mensajes en memoria (thread-safe)
+# Mensajes en memoria
 messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
 
 # Estado de login pendiente
 pending_phone = {"phone": None, "sent_at": None}
 
-# --- Background loop starter ---
+# --- Background loop ---
 def _loop_thread():
     asyncio.set_event_loop(loop)
     loop.run_forever()
 
 threading.Thread(target=_loop_thread, daemon=True).start()
 
-# --- Helper para ejecutar coroutines ---
 def run_coro(coro):
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result()
-
-# --- Conectar cliente ---
-async def _start_client_connect():
-    try:
-        await client.connect()
-        print("🔌 Telethon conectado. Autorizado?", await client.is_user_authorized())
-    except Exception:
-        traceback.print_exc()
-
-asyncio.run_coroutine_threadsafe(_start_client_connect(), loop)
 
 # --- Event handler ---
 async def _on_new_message(event):
@@ -147,7 +135,7 @@ def code():
     async def _sign_in():
         try:
             await client.sign_in(phone, code)
-            await client.start()  # 🚀 asegura que la sesión quede persistente
+            await client.start()
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
             return {"status": "authenticated"}
