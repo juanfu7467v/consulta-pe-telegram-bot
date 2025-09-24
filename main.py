@@ -13,7 +13,7 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
 SESSION = os.getenv("SESSION", "consulta_pe_session")
-PORT = int(os.getenv("PORT", "8080"))  # Railway asigna dinámico
+PORT = int(os.getenv("PORT", "8080"))
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
@@ -26,8 +26,6 @@ CORS(app)
 # Cola de mensajes en memoria
 messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
-
-# Estado de login pendiente
 pending_phone = {"phone": None, "sent_at": None}
 
 # --- Loop asyncio + Telethon ---
@@ -53,10 +51,8 @@ async def _on_new_message(event):
             "from_id": event.sender_id,
             "date": event.message.date.isoformat() if getattr(event, "message", None) else datetime.utcnow().isoformat(),
         }
-
         if getattr(event, "raw_text", None):
             msg_obj["message"] = event.raw_text
-
         if getattr(event, "message", None) and getattr(event.message, "media", None):
             try:
                 saved_path = await event.download_media(file=DOWNLOAD_DIR)
@@ -64,10 +60,8 @@ async def _on_new_message(event):
                 msg_obj["url"] = f"{PUBLIC_URL}/files/{filename}"
             except Exception as e:
                 msg_obj["media_error"] = str(e)
-
         with _messages_lock:
             messages.appendleft(msg_obj)
-
         print("📥 Nuevo mensaje:", msg_obj)
     except Exception:
         traceback.print_exc()
@@ -95,10 +89,7 @@ def status():
         is_auth = run_coro(client.is_user_authorized())
     except Exception:
         is_auth = False
-    return jsonify({
-        "authorized": bool(is_auth),
-        "pending_phone": pending_phone["phone"]
-    })
+    return jsonify({"authorized": bool(is_auth), "pending_phone": pending_phone["phone"]})
 
 @app.route("/login")
 def login():
@@ -118,8 +109,7 @@ def login():
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    result = run_coro(_send_code())
-    return jsonify(result)
+    return jsonify(run_coro(_send_code()))
 
 @app.route("/code")
 def code():
@@ -141,8 +131,7 @@ def code():
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
-    result = run_coro(_sign_in())
-    return jsonify(result)
+    return jsonify(run_coro(_sign_in()))
 
 @app.route("/send")
 def send_msg():
@@ -158,8 +147,7 @@ def send_msg():
         return {"status": "sent", "to": chat_id, "msg": msg}
 
     try:
-        result = run_coro(_send())
-        return jsonify(result)
+        return jsonify(run_coro(_send()))
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
 
@@ -167,13 +155,8 @@ def send_msg():
 def get_msgs():
     with _messages_lock:
         data = list(messages)
-    return jsonify({
-        "message": "found data" if data else "no data",
-        "result": {
-            "quantity": len(data),
-            "coincidences": data
-        }
-    })
+    return jsonify({"message": "found data" if data else "no data",
+                    "result": {"quantity": len(data), "coincidences": data}})
 
 @app.route("/files/<path:filename>")
 def files(filename):
@@ -187,6 +170,4 @@ def init_telethon():
     except Exception as e:
         print("❌ Error iniciando Telethon:", e)
 
-if __name__ == "__main__":
-    init_telethon()
-    app.run(host="0.0.0.0", port=PORT)
+init_telethon()
