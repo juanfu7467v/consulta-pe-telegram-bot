@@ -4,21 +4,31 @@ FROM python:3.11-slim
 # Evita problemas de buffering
 ENV PYTHONUNBUFFERED=1
 
-# Crea un directorio de trabajo
+# Crea directorio de trabajo
 WORKDIR /app
 
-# Copia e instala dependencias
+# Instala dependencias del sistema necesarias para Telethon y Flask
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copia dependencias Python
 COPY requirements.txt .
+
+# Instala dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia todo el proyecto
+# Copia el resto del proyecto
 COPY . .
 
-# Crea carpeta para descargas (por seguridad)
+# Carpeta de descargas
 RUN mkdir -p downloads
 
-# Puerto (Railway usará su propia variable $PORT)
-EXPOSE 8000
+# Puerto expuesto (Railway usa $PORT)
+EXPOSE 8080
 
-# Comando de inicio con Gunicorn, usando $PORT de Railway
-CMD gunicorn main:app --bind 0.0.0.0:$PORT --workers 1 --threads 8
+# Arranque con Gunicorn
+CMD ["gunicorn", "main:app", "--bind", "0.0.0.0:8080", "--workers=1", "--threads=8"]
