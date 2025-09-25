@@ -32,12 +32,12 @@ CORS(app)
 loop = asyncio.new_event_loop()
 
 # --- Telethon Client ---
-if SESSION_STRING and SESSION_STRING.strip():
+if SESSION_STRING and SESSION_STRING.strip() and SESSION_STRING != "consulta_pe_bot":
     session = StringSession(SESSION_STRING)
     print("🔑 Usando SESSION_STRING desde secrets")
 else:
-    session = "consulta_pe_session"
-    print("📂 No hay SESSION_STRING en secrets, se usará archivo temporal")
+    session = "consulta_pe_bot"  # valor temporal mientras no haya sesión real
+    print("📂 Usando sesión temporal")
 
 client = TelegramClient(session, API_ID, API_HASH, loop=loop)
 
@@ -87,8 +87,6 @@ async def _ensure_connected():
                 print("🔌 Reconectando Telethon...")
             if await client.is_user_authorized():
                 print("✅ Cliente autorizado")
-            else:
-                print("⚠️ Cliente no autorizado")
         except Exception:
             traceback.print_exc()
 
@@ -152,10 +150,20 @@ def status():
         is_auth = run_coro(client.is_user_authorized())
     except Exception:
         is_auth = False
+
+    # Si ya hay sesión válida, mostrarla
+    current_session = None
+    try:
+        if is_auth:
+            current_session = client.session.save()
+    except Exception:
+        pass
+
     return jsonify({
         "authorized": bool(is_auth),
         "pending_phone": pending_phone["phone"],
-        "session_loaded": True if SESSION_STRING else False
+        "session_loaded": True if SESSION_STRING else False,
+        "session_string": current_session
     })
 
 @app.route("/login")
