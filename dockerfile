@@ -1,5 +1,5 @@
-# Imagen base de Python
-FROM python:3.11-slim
+# Imagen base oficial de Python (más estable para Fly.io)
+FROM python:3.11-bullseye
 
 # Carpeta de trabajo
 WORKDIR /app
