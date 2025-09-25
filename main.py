@@ -6,13 +6,15 @@ from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 import traceback
 
 # --- Config ---
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost").rstrip("/")
-SESSION = os.getenv("SESSION", "consulta_pe_session")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
+SESSION = os.getenv("TELEGRAM_SESSION", "")  # ⚡ aquí guardamos la sesión
+PORT = int(os.getenv("PORT", 3000))
 
 # Carpeta de descargas
 DOWNLOAD_DIR = "downloads"
@@ -22,15 +24,15 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 app = Flask(__name__)
 CORS(app)
 
-# Cola de mensajes en memoria
+# Async loop + Telethon
+loop = asyncio.new_event_loop()
+session = StringSession(SESSION) if SESSION else StringSession()
+client = TelegramClient(session, API_ID, API_HASH, loop=loop)
+
+# Cola de mensajes
 messages = deque(maxlen=2000)
 _messages_lock = threading.Lock()
 pending_phone = {"phone": None, "sent_at": None}
-
-# --- Loop asyncio + Telethon ---
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-client = TelegramClient(SESSION, API_ID, API_HASH, loop=loop)
 
 def _loop_thread():
     asyncio.set_event_loop(loop)
@@ -67,7 +69,8 @@ async def _on_new_message(event):
 
 client.add_event_handler(_on_new_message, events.NewMessage(incoming=True))
 
-# --- Rutas HTTP ---
+# ------------------- Rutas -------------------
+
 @app.route("/")
 def root():
     return jsonify({
@@ -124,9 +127,15 @@ def code():
         try:
             await client.sign_in(phone, code)
             await client.start()
+
+            # ⚡ Guardamos la nueva sesión como String
+            string = client.session.save()
+            print("🔑 Nueva sesión generada:", string)
+
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
-            return {"status": "authenticated"}
+
+            return {"status": "authenticated", "string_session": string}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
@@ -154,21 +163,21 @@ def send_msg():
 def get_msgs():
     with _messages_lock:
         data = list(messages)
-    return jsonify({"message": "found data" if data else "no data",
-                    "result": {"quantity": len(data), "coincidences": data}})
+    return jsonify({
+        "message": "found data" if data else "no data",
+        "result": {"quantity": len(data), "coincidences": data}
+    })
 
 @app.route("/files/<path:filename>")
 def files(filename):
     return send_from_directory(DOWNLOAD_DIR, filename, as_attachment=False)
 
-# --- Startup ---
-def init_telethon():
+# ------------------- Run -------------------
+if __name__ == "__main__":
     try:
         run_coro(client.connect())
-        print("✅ Telethon conectado correctamente")
-    except Exception as e:
-        print("❌ Error iniciando Telethon:", e)
+    except Exception:
+        pass
 
-init_telethon()
-
-# Importante: NO usar app.run() porque Gunicorn se encarga de levantar el servidor
+    print(f"🚀 App corriendo en http://0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
+    app.run(host="0.0.0.0", port=PORT, threaded=True)
