@@ -82,7 +82,7 @@ def update_fly_secret(new_string):
 async def _ensure_connected():
     while True:
         try:
-            if not await client.is_connected():
+            if not client.is_connected():   # 👈 FIX: ya no se usa await
                 await client.connect()
                 print("🔌 Reconectando Telethon...")
             if await client.is_user_authorized():
@@ -99,6 +99,7 @@ async def _ensure_connected():
         except Exception:
             pass
         await asyncio.sleep(300)  # cada 5 minutos
+
 asyncio.run_coroutine_threadsafe(_ensure_connected(), loop)
 
 # --- Event handler ---
