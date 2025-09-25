@@ -15,12 +15,12 @@ import subprocess
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
-SESSION_STRING = os.getenv("SESSION_STRING", None)  # StringSession almacenado en secrets
+SESSION_STRING = os.getenv("SESSION_STRING", None)  # StringSession desde secrets
 PORT = int(os.getenv("PORT", 3000))
-FLY_APP = os.getenv("FLY_APP", "")  # Nombre de tu app Fly.io
-FLY_API_TOKEN = os.getenv("FLY_API_TOKEN", "")  # Token API de Fly.io
+FLY_APP = os.getenv("FLY_APP", "")
+FLY_API_TOKEN = os.getenv("FLY_API_TOKEN", "")
 
-# Carpeta para archivos descargados
+# Carpeta descargas
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -31,13 +31,13 @@ CORS(app)
 # Async loop
 loop = asyncio.new_event_loop()
 
-# --- Telethon Client con StringSession ---
+# --- Telethon Client ---
 if SESSION_STRING and SESSION_STRING.strip():
     session = StringSession(SESSION_STRING)
     print("🔑 Usando SESSION_STRING desde secrets")
 else:
-    session = "consulta_pe_session"  # fallback a archivo físico
-    print("📂 Usando sesión de archivo temporal (primera vez)")
+    session = "consulta_pe_session"
+    print("📂 No hay SESSION_STRING en secrets, se usará archivo temporal")
 
 client = TelegramClient(session, API_ID, API_HASH, loop=loop)
 
@@ -55,15 +55,15 @@ def _loop_thread():
 
 threading.Thread(target=_loop_thread, daemon=True).start()
 
-# --- Helper para ejecutar coroutines ---
+# --- Ejecutar coroutines ---
 def run_coro(coro):
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result()
 
-# --- Función para actualizar SESSION_STRING en Fly.io Secrets ---
+# --- Actualizar secrets en Fly.io ---
 def update_fly_secret(new_string):
     if not (FLY_APP and FLY_API_TOKEN):
-        print("⚠️ Fly.io secret no se actualizó: faltan FLY_APP o FLY_API_TOKEN")
+        print("⚠️ No se actualizó SESSION_STRING: faltan FLY_APP o FLY_API_TOKEN")
         return
     try:
         cmd = [
@@ -78,41 +78,41 @@ def update_fly_secret(new_string):
     except Exception as e:
         print("❌ Error actualizando Fly.io Secret:", e)
 
-# --- Reconexión automática + Ping interno cada 5min ---
+# --- Reconexión automática + ping ---
 async def _ensure_connected():
     while True:
         try:
-            if not client.is_connected():   # 👈 FIX: ya no se usa await
+            if not client.is_connected():
                 await client.connect()
                 print("🔌 Reconectando Telethon...")
             if await client.is_user_authorized():
-                print("✅ Cliente conectado y autorizado")
+                print("✅ Cliente autorizado")
             else:
-                print("⚠️ Cliente no autorizado, esperando login...")
+                print("⚠️ Cliente no autorizado")
         except Exception:
             traceback.print_exc()
-        # Ping interno para evitar que Fly.io duerma el contenedor
+
+        # Ping interno para evitar suspensión
         try:
-            async with aiohttp.ClientSession() as session_http:
-                async with session_http.get(f"{PUBLIC_URL}/status") as resp:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(f"{PUBLIC_URL}/status") as resp:
                     await resp.text()
         except Exception:
             pass
-        await asyncio.sleep(300)  # cada 5 minutos
+
+        await asyncio.sleep(300)
 
 asyncio.run_coroutine_threadsafe(_ensure_connected(), loop)
 
-# --- Event handler ---
+# --- Handler mensajes ---
 async def _on_new_message(event):
     try:
         msg_obj = {
             "chat_id": getattr(event, "chat_id", None),
             "from_id": event.sender_id,
             "date": event.message.date.isoformat() if getattr(event, "message", None) else datetime.utcnow().isoformat(),
+            "message": event.raw_text or ""
         }
-        if getattr(event, "raw_text", None):
-            msg_obj["message"] = event.raw_text
-
         if getattr(event, "message", None) and getattr(event.message, "media", None):
             try:
                 saved_path = await event.download_media(file=DOWNLOAD_DIR)
@@ -154,7 +154,8 @@ def status():
         is_auth = False
     return jsonify({
         "authorized": bool(is_auth),
-        "pending_phone": pending_phone["phone"]
+        "pending_phone": pending_phone["phone"],
+        "session_loaded": True if SESSION_STRING else False
     })
 
 @app.route("/login")
@@ -191,16 +192,14 @@ def code():
     async def _sign_in():
         try:
             await client.sign_in(phone, code)
-            await client.start()  # asegura sesión persistente
+            await client.start()
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
-            print("✅ Sesión iniciada correctamente")
             new_string = client.session.save()
-            # Auto-guardar SESSION_STRING en Fly.io Secrets
             update_fly_secret(new_string)
             return {"status": "authenticated", "session_string": new_string}
         except errors.SessionPasswordNeededError:
-            return {"status": "error", "error": "2FA required"}
+            return {"status": "error", "error": "2FA requerido"}
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
@@ -212,7 +211,7 @@ def send_msg():
     chat_id = request.args.get("chat_id")
     msg = request.args.get("msg")
     if not chat_id or not msg:
-        return jsonify({"error": "Faltan parámetros chat_id o msg"}), 400
+        return jsonify({"error": "Faltan parámetros"}), 400
 
     async def _send():
         target = int(chat_id) if chat_id.isdigit() else chat_id
@@ -249,5 +248,5 @@ if __name__ == "__main__":
     except Exception:
         pass
 
-    print(f"🚀 App corriendo en http://0.0.0.0:{PORT} (PUBLIC_URL={PUBLIC_URL})")
+    print(f"🚀 App corriendo en http://0.0.0.0:{PORT}")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
