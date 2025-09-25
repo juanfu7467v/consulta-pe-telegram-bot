@@ -15,7 +15,7 @@ import subprocess
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
-SESSION_STRING = os.getenv("SESSION_STRING", "")  # StringSession almacenado en secrets
+SESSION_STRING = os.getenv("SESSION_STRING", None)  # StringSession almacenado en secrets
 PORT = int(os.getenv("PORT", 3000))
 FLY_APP = os.getenv("FLY_APP", "")  # Nombre de tu app Fly.io
 FLY_API_TOKEN = os.getenv("FLY_API_TOKEN", "")  # Token API de Fly.io
@@ -32,10 +32,12 @@ CORS(app)
 loop = asyncio.new_event_loop()
 
 # --- Telethon Client con StringSession ---
-if SESSION_STRING:
+if SESSION_STRING and SESSION_STRING.strip():
     session = StringSession(SESSION_STRING)
+    print("🔑 Usando SESSION_STRING desde secrets")
 else:
     session = "consulta_pe_session"  # fallback a archivo físico
+    print("📂 Usando sesión de archivo temporal (primera vez)")
 
 client = TelegramClient(session, API_ID, API_HASH, loop=loop)
 
@@ -80,7 +82,7 @@ def update_fly_secret(new_string):
 async def _ensure_connected():
     while True:
         try:
-            if not await client.is_connected():
+            if not client.is_connected():   # 👈 FIX: ya no se usa await
                 await client.connect()
                 print("🔌 Reconectando Telethon...")
             if await client.is_user_authorized():
@@ -97,6 +99,7 @@ async def _ensure_connected():
         except Exception:
             pass
         await asyncio.sleep(300)  # cada 5 minutos
+
 asyncio.run_coroutine_threadsafe(_ensure_connected(), loop)
 
 # --- Event handler ---
