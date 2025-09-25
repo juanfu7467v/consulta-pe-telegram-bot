@@ -15,7 +15,7 @@ import subprocess
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "https://consulta-pe-telegram-bot.fly.dev").rstrip("/")
-SESSION_STRING = os.getenv("SESSION_STRING", None)  # StringSession desde secrets
+SESSION_STRING = os.getenv("SESSION_STRING", None)
 PORT = int(os.getenv("PORT", 3000))
 FLY_APP = os.getenv("FLY_APP", "")
 FLY_API_TOKEN = os.getenv("FLY_API_TOKEN", "")
@@ -36,7 +36,7 @@ if SESSION_STRING and SESSION_STRING.strip() and SESSION_STRING != "consulta_pe_
     session = StringSession(SESSION_STRING)
     print("🔑 Usando SESSION_STRING desde secrets")
 else:
-    session = "consulta_pe_bot"  # valor temporal mientras no haya sesión real
+    session = "consulta_pe_bot"
     print("📂 Usando sesión temporal")
 
 client = TelegramClient(session, API_ID, API_HASH, loop=loop)
@@ -90,7 +90,6 @@ async def _ensure_connected():
         except Exception:
             traceback.print_exc()
 
-        # Ping interno para evitar suspensión
         try:
             async with aiohttp.ClientSession() as s:
                 async with s.get(f"{PUBLIC_URL}/status") as resp:
@@ -151,7 +150,6 @@ def status():
     except Exception:
         is_auth = False
 
-    # Si ya hay sesión válida, mostrarla
     current_session = None
     try:
         if is_auth:
@@ -204,7 +202,8 @@ def code():
             pending_phone["phone"] = None
             pending_phone["sent_at"] = None
             new_string = client.session.save()
-            update_fly_secret(new_string)
+            if new_string:
+                update_fly_secret(new_string)
             return {"status": "authenticated", "session_string": new_string}
         except errors.SessionPasswordNeededError:
             return {"status": "error", "error": "2FA requerido"}
